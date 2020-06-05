@@ -2,6 +2,7 @@ inp_dir = config['input']
 out_dir = config['output']
 stems = config['stems'].split()
 R = ['1', '2']
+kits = ['KAPA', 'Collibri']
 
 def get_stranded(wildcards):
     stem = wildcards.stem
@@ -21,7 +22,13 @@ rule all:
         expand(out_dir + "/BAMs/MAPPED_{stem}_Aligned.sortedByCoord.out.bam", stem=stems),
         expand(out_dir + "/STRD/{stem}_str.log", stem=stems),
         expand(out_dir + "/counts/counts_{stem}.log", stem=stems),
-        out_dir + "/counts/bla.log"
+        out_dir + "/multiqc_STAR.html",
+        out_dir + "/multiqc_featureCounts.html",
+        expand("{kit}_DE_genes.csv", kit = kits),
+        expand("{kit}_DOWN_DE_genes.csv", kit = kits),
+        expand("{kit}_UP_DE_genes.csv", kit = kits),
+        expand("{kit}_vulcano.png", kit = kits),
+        "venn.png"
 
 rule fastqc:
     input:
@@ -52,6 +59,24 @@ rule multiqc_trimmed:
     shell:
         "multiqc {input} -o " + out_dir + " -n multiqc_report_trimmed -z"
 
+rule multiqc_STAR:
+    input:
+        expand(out_dir + "/BAMs/MAPPED_{stem}_Log.final.out", stem = stems)
+    output:
+        out_dir + "/multiqc_STAR.html",
+        out_dir + "/multiqc_STAR_data.zip"
+    shell:
+        "multiqc {input} -o " + out_dir + " -n multiqc_STAR -z"
+
+rule featureCounts_multiqc:
+    input:
+        expand(out_dir + "/counts/counts_{stem}.log.summary", stem = stems)
+    output:
+        out_dir + "/multiqc_featureCounts.html",
+        out_dir + "/multiqc_featureCounts_data.zip"
+    shell:
+        "multiqc {input} -o " + out_dir + " -n multiqc_featureCounts -z"   
+
 rule trim_fastq:
     input:
         inp_dir + "/{stem}_L001_R1_001.fastq.gz",
@@ -81,7 +106,8 @@ rule STAR:
         inp_dir + "/{stem}_R2_trimmed.fastq.gz",
         out_dir + "/STAR_genome"
     output:
-        out_dir + "/BAMs/MAPPED_{stem}_Aligned.sortedByCoord.out.bam"
+        out_dir + "/BAMs/MAPPED_{stem}_Aligned.sortedByCoord.out.bam",
+        out_dir + "/BAMs/MAPPED_{stem}_Log.final.out"
     threads: 2
     params:
         pref = out_dir + "/BAMs/MAPPED_{stem}_"
@@ -112,18 +138,23 @@ rule featureCounts:
     input:
         out_dir + "/BAMs/MAPPED_{stem}_NameSorted.bam"
     output:
-        out_dir + "/counts/counts_{stem}.log"
+        out_dir + "/counts/counts_{stem}.log",
+        out_dir + "/counts/counts_{stem}.log.summary"
     params:
         strd = get_stranded,
         gtf = config['gtf']
     shell:
-        "featureCounts -p {params.strd} -t exon -g gene_id -a {params.gtf} -o {output} {input}"
+        "featureCounts -p {params.strd} -t exon -g gene_id -a {params.gtf} -o {output[0]} {input}"
 
 rule deseq2:
     input:
         expand(out_dir + "/counts/counts_{stem}.log", stem=stems)
     output:
-        out_dir + "/counts/bla.log"
+        expand("{kit}_DE_genes.csv", kit = kits),
+        expand("{kit}_DOWN_DE_genes.csv", kit = kits),
+        expand("{kit}_UP_DE_genes.csv", kit = kits),
+        expand("{kit}_vulcano.png", kit = kits),
+        "venn.png"
     shell:
         "Rscript analyse_DE.r {input}"
 
